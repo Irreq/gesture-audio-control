@@ -20,18 +20,6 @@ from .model import PointHistoryClassifier
 from .utils import GracefulExit, CvFpsCalc
 from .audio import AudioWrapper
 
-def select_mode(key, mode):
-    number = -1
-    if 48 <= key <= 57:  # 0 ~ 9
-        number = key - 48
-    if key == 110:  # n
-        mode = 0
-    if key == 107:  # k
-        mode = 1
-    if key == 104:  # h
-        mode = 2
-    return number, mode
-
 def calc_bounding_rect(image, landmarks):
     image_width, image_height = image.shape[1], image.shape[0]
 
@@ -106,26 +94,11 @@ def pre_process_point_history(image, point_history):
 
     return temp_point_history
 
-def logging_csv(number, mode, landmark_list, point_history_list):
-    if mode == 0:
-        pass
-    if mode == 1 and (0 <= number <= 9):
-        csv_path = 'pygac/model/keypoint_classifier/keypoint.csv'
-        with open(csv_path, 'a', newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow([number, *landmark_list])
-    if mode == 2 and (0 <= number <= 9):
-        csv_path = 'pygac/model/point_history_classifier/point_history.csv'
-        with open(csv_path, 'a', newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow([number, *point_history_list])
-    return
 
 class GestureControl(GracefulExit, AudioWrapper):
 
     use_brect = True
     previous = ""
-    mode = 0
 
     def __init__(self, args=None):
         if args is None:
@@ -210,14 +183,10 @@ class GestureControl(GracefulExit, AudioWrapper):
         while not self.exit_now:
             fps = self.cvFpsCalc.get()
 
-            key = cv.waitKey(10)
-            if key == 27:  # ESC
-                break
-            number, self.mode = select_mode(key, self.mode)
-
             ret, image = self.cap.read()
             if not ret:
                 break
+
             image = cv.flip(image, 1)
             debug_image = copy.deepcopy(image)
 
@@ -239,9 +208,6 @@ class GestureControl(GracefulExit, AudioWrapper):
                         landmark_list)
                     pre_processed_point_history_list = pre_process_point_history(
                         debug_image, self.point_history)
-
-                    logging_csv(number, self.mode, pre_processed_landmark_list,
-                                pre_processed_point_history_list)
 
                     hand_sign_id = self.keypoint_classifier(pre_processed_landmark_list)
                     if hand_sign_id == 2:

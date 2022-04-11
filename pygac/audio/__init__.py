@@ -31,9 +31,9 @@ if not os.path.isdir(utils.temporary_directory):
     os.makedirs(utils.temporary_directory)
     if not os.path.isdir(utils.temporary_directory+'/players'):
         os.makedirs(utils.temporary_directory+'/players')
-    if not os.path.isdir(temporary_directory+'/paused-players'):
+    if not os.path.isdir(utils.temporary_directory+'/paused-players'):
         os.makedirs(utils.temporary_directory+'/paused-players')
-    if not os.path.isfile(temporary_directory+'/driver'):
+    if not os.path.isfile(utils.temporary_directory+'/driver'):
         with open(utils.temporary_directory+'/driver', 'a'):
             os.utime(utils.temporary_directory+'/driver', None)
         # with open(utils.temporary_directory+'/driver', 'w') as f:

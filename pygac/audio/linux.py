@@ -6,7 +6,9 @@ import os
 import dbus
 from dbus.mainloop.glib import DBusGMainLoop
 
-from ..utils import temporary_directory
+# from ..utils import temporary_directory
+
+from .. import utils
 
 DBusGMainLoop(set_as_default=True)
 
@@ -36,8 +38,10 @@ class DbusHandler:
     players = []
     driver = "ALSA"
 
+    tmp_directory = utils.temporary_directory
+
     def __init__(self):
-        self.tmp_directory = temporary_directory
+        # self.tmp_directory = temporary_directory
         self.controls = getattr(Controls, self.driver, None)
         if self.controls is None:
             raise Exception("Unsupported driver: %s", self.driver)

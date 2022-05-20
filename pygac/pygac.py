@@ -20,6 +20,51 @@ from .model import PointHistoryClassifier
 from .utils import GracefulExit, CvFpsCalc
 from .audio import AudioWrapper
 
+e = 2.71828182846
+
+PALM_WIDTH = 10  # Purely an estimate
+
+def continuous_rectifier(x0, x, x1):
+    """
+    Theoretical Continuous Analog Rectifier For Artificial Neural Networks.
+
+    NOTE:           The algorithm yields an input-value rectified
+                    between two other values calculated by the relative
+                    distance distance. This equation is defined as:
+                    ______________________________________________________
+
+                                            x1 - x0
+                    f(x0, x, x1) = ------------------------ + x0
+                                           -(2*x - x1 - x0)
+                                            ---------------
+                                   1 + (5e)     x1 - x0
+                    ______________________________________________________
+                    If x is not between x0 and x1, x will be valued
+                    closest to that value. This will create.
+                    If x0<x<x1, x will kind of keep its value apart
+                    from minor changes. If not x0<x<x1, x will be
+                    fit within boundaries. It is basically the
+                    sigmoid function, but instead of: x -> 0<x<1
+                    it is: x -> x0<x<x1
+
+    ARGUMENTS:
+        - x0                float() The lower boundary (min).
+        - x                 float() The value to rectify.
+        - x1                float() The upper boundary (max).
+    RETURNS:
+        - float()           x0 <= x <= x1
+    """
+
+    return (x1 - x0) / (1 + (5*e) ** -((2*x - x1 - x0) / (x1 - x0))) + x0
+
+def exp_decay(x, m):
+    """Exponential decay to estimate distance from lens"""
+    return np.log(x/m) / -0.25
+
+def eucleidian_distance(p0, p1):
+    """Calculate absolute distance between two points"""
+    return (((p0[0] - p1[0])**2) + ((p0[1] - p1[1])**2))**.5
+
 def calc_bounding_rect(image, landmarks):
     image_width, image_height = image.shape[1], image.shape[0]
 
@@ -204,6 +249,28 @@ class GestureControl(GracefulExit, AudioWrapper):
 
                     landmark_list = calc_landmark_list(debug_image, hand_landmarks)
 
+                    if False:
+                        length_volume = eucleidian_distance(landmark_list[4], landmark_list[8])
+
+                        length_hand = eucleidian_distance(landmark_list[2], landmark_list[17])
+
+                        variable_distance = exp_decay(length_hand, debug_image.shape[1])
+
+                        var_vol = exp_decay(length_volume, debug_image.shape[0])
+
+                        naive_distance_from_camera = variable_distance * PALM_WIDTH  # In cm
+
+                        inverted = debug_image.shape[0] - length_volume - 50
+
+                        normalized = continuous_rectifier(0, length_volume, debug_image.shape[0])
+
+
+                        vol = (normalized / debug_image.shape[0]) # / (10-variable_distance)
+
+                        resul = continuous_rectifier(0, naive_distance_from_camera*vol, PALM_WIDTH*2) / (PALM_WIDTH * 2)
+
+                        print(f"{int(resul*100)}%       ", end="\r")
+
                     pre_processed_landmark_list = pre_process_landmark(
                         landmark_list)
                     pre_processed_point_history_list = pre_process_point_history(
@@ -211,7 +278,7 @@ class GestureControl(GracefulExit, AudioWrapper):
 
                     hand_sign_id = self.keypoint_classifier(pre_processed_landmark_list)
                     if hand_sign_id == 2:
-                        self.point_history.append(landmark_list[8])  # 人差指座標
+                        self.point_history.append(landmark_list[8])
                     else:
                         self.point_history.append([0, 0])
 

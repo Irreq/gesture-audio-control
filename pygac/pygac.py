@@ -20,6 +20,12 @@ from .model import PointHistoryClassifier
 from .utils import GracefulExit, CvFpsCalc
 from .audio import AudioWrapper
 
+"""
+TODO:
+
++ Limit FPS to prevent too fast volume changes. -> GestureControl.start
+"""
+
 e = 2.71828182846
 
 PALM_WIDTH = 10  # Purely an estimate
@@ -145,15 +151,21 @@ class GestureControl(GracefulExit, AudioWrapper):
     use_brect = True
     previous = ""
 
-    def __init__(self, args=None):
+    def __init__(self, args=None, callback=None, driver=None, **entries):
+        self.__dict__.update(entries)
         if args is None:
             raise Exception("No arguments")
+
+        # print(args.verbose)
+        self.verbose = not args.headless
+
+        if callback is not None:
+            self.callback = callback
 
         self.cap_device = args.device
         self.cap_width = args.width
         self.cap_height = args.height
 
-        self.use_static_image_mode = args.use_static_image_mode
         self.min_detection_confidence = args.min_detection_confidence
         self.min_tracking_confidence = args.min_tracking_confidence
 
@@ -169,8 +181,8 @@ class GestureControl(GracefulExit, AudioWrapper):
 
         self.mp_hands = mp.solutions.hands
         self.hands = self.mp_hands.Hands(
-            static_image_mode=self.use_static_image_mode,
-            max_num_hands=1,
+            static_image_mode=False,
+            max_num_hands=1,  # TODO: Multiple hand recognition
             min_detection_confidence=self.min_detection_confidence,
             min_tracking_confidence=self.min_tracking_confidence,
         )
@@ -203,7 +215,7 @@ class GestureControl(GracefulExit, AudioWrapper):
         self.finger_gesture_history = deque(maxlen=self.history_length)
 
     def handle_events(self, handstatus, fingerstatus):
-        if handstatus == "Pointer":  # Remember to limit FPS
+        if handstatus == "Pointer":  # TODO limit FPS
             if fingerstatus == "Counter Clockwise":
                 self.down()
             elif fingerstatus == "Clockwise":
@@ -219,6 +231,8 @@ class GestureControl(GracefulExit, AudioWrapper):
 
             self.previous = handstatus
 
+        if self.verbose:
+            print(self.percentage, end="\r     ")
 
     def start(self):
         """Main Loop"""
@@ -240,6 +254,20 @@ class GestureControl(GracefulExit, AudioWrapper):
             image.flags.writeable = False
             results = self.hands.process(image)
             image.flags.writeable = True
+
+            # res = results.multi_hand_world_landmarks
+
+            # if res is None:
+            #     res = 0
+            # # else:
+            # #     res = len(res)
+            # print(results, end = "\r")
+            # if results.multi_hand_world_landmarks:
+            #     for i, hand_landmarks in enumerate(results.multi_hand_world_landmarks):
+            #         # print(i, hand_landmarks)
+            #         print(i)
+            #
+            # continue
 
             if results.multi_hand_landmarks is not None:
                 for hand_landmarks, handedness in zip(results.multi_hand_landmarks,

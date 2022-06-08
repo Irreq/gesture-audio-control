@@ -2,13 +2,20 @@
 # -*- coding: utf-8 -*-
 
 import os
+import re
+import subprocess
 
 import dbus
 from dbus.mainloop.glib import DBusGMainLoop
 
-# from ..utils import temporary_directory
-
 from .. import utils
+
+"""
+TODO:
+
++ Implement other backends other than alsa. -> VolumeControls._aggregate_soundcards
++ Get initial volume level from start. -> VolumeControls.__init__
+"""
 
 DBusGMainLoop(set_as_default=True)
 
@@ -21,13 +28,157 @@ CONTROLS = {
     },
 }
 
-class Controls:
-    ALSA = {
-        "mute": "amixer set Master -q mute",
-        "unmute": "amixer set Master -q unmute",
-        "up": "amixer set Master -q 1%+",
-        "down": "amixer set Master -q 1%-"
-    }
+BLACKLIST = ["capture", "mic", "internal", "monitor", "beep", "mode", "iec958", "pcm", "loudness"]
+
+WHITELIST = ["master", "usb audio"]
+
+def check_software(cmd):
+    try:
+        if subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT):
+            return True
+    except:
+        return False
+
+
+# for name, value in {"pulseaudio": "pactl", "alsa": "amixer"}.items():
+#     print(name, value)
+#
+# exit()
+
+class Alsa:
+    pass
+
+class PulseAudio:
+    pass
+
+class PipeWire:
+    pass
+
+class Jack:
+    pass
+
+
+class VolumeControls:
+    """Handle multiple audio devices."""
+
+    muted = False
+    change = 1  # Percentage %
+    percentage = 50  # initial value TODO
+
+    def __init__(self, driver="alsa"):
+        self.driver = driver
+        self.debug = utils.debug
+        self.soundcards = self._aggregate_soundcards()
+
+        if not self.soundcards:
+            raise IOError("No soundcards could be detected, is `alsa` installed?")
+
+        # print(list(self.soundcards.values()))
+        # if "'Master'" in [k for i in self.soundcards.values() for k in i]:
+
+        # print(r)
+
+        # sys.exit(2)
+
+    def get_initial_volume(self, card=None):
+        cmd = "amixer get 'Master'"
+        if card is not None:
+            cmd = "amixer -c %d get 'Master'" % card
+
+        try:
+            output = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT)
+            candidates = []  # TODO: Can be separate audio levels, eg. bass or mid
+            for match in re.findall(r"\[(\d{0,3})%\]", str(output)):
+                candidates.append(int(match))
+
+            self.percentage = max(candidates)
+        except:
+            self.percentage = 50
+
+
+
+
+
+    def _aggregate_soundcards(self, blacklist=BLACKLIST, whitelist=WHITELIST):
+        """Find the name of soundcards to use for audio control."""
+
+        card_number = 0
+        self.soundcards = {}
+
+        while True:
+            tmp_card = []
+            try:
+                output = subprocess.check_output(f"amixer -c {str(card_number)}",
+                                                 shell=True,
+                                                 stderr=subprocess.STDOUT)
+
+                # Match only 'Master' and similar
+                pattern = "(Simple mixer control) ('[A-Z][^']*['])"
+
+                # Ignore blacklisted devices
+                for _, match in re.findall(pattern, str(output)):
+                    candidate = True
+                    for item in blacklist:
+                        if item in match.lower():
+                            candidate = False
+                            break
+                    if not candidate:
+                        continue
+
+                    if match == "'Master'":
+                        try:
+                            self.get_initial_volume(card=card_number)
+                        except Exception as e:
+                            print(e)
+                    tmp_card.append(match)
+
+                    # for w_item in whitelist:
+                    #     if w_item in match.lower():
+                    #         tmp_card.append(match)
+                    #         if match == "'Master'":
+                    #             try:
+                    #                 self.get_initial_volume(card=card_number)
+                    #             except Exception as e:
+                    #                 print(e)
+
+                if any(tmp_card):
+                    self.soundcards[card_number] = tmp_card
+            except:
+                break
+            card_number += 1
+
+        print(self.soundcards)
+
+        return self.soundcards
+
+    def volume_change(self, value, change=None):
+        if change:
+            self.change = change
+
+        if self.percentage + value < 0 or self.percentage + value > 100:
+            return
+        else:
+            self.percentage += value
+
+        if self.driver == "alsa":
+            for id in self.soundcards:
+                for device in self.soundcards[id]:
+                    # cmd = "amixer -c {0} set {1} -q {2}%{3}".format(id, device,
+                    #                                                 self.change,
+                    #                                                 value)
+                    cmd = "amixer -c {0} set {1} -q {2}%".format(id, device,
+                                                                 self.percentage)
+                    os.system(cmd)
+                    # self.debug(cmd)
+
+    def mute(self):
+        if not self.muted:
+            self.muted = False
+
+    def unmute(self):
+        if self.muted:
+            self.muted = True
+
 
 def do_nothing(*args, **kwargs):
     """Do nothing"""
@@ -36,15 +187,15 @@ def do_nothing(*args, **kwargs):
 class DbusHandler:
 
     players = []
-    driver = "ALSA"
+    # driver = "alsa"
 
     tmp_directory = utils.temporary_directory
 
     def __init__(self):
         # self.tmp_directory = temporary_directory
-        self.controls = getattr(Controls, self.driver, None)
-        if self.controls is None:
-            raise Exception("Unsupported driver: %s", self.driver)
+        # self.controls = getattr(Controls, self.driver, None)
+        # if self.controls is None:
+        #     raise Exception("Unsupported driver: %s", self.driver)
         self.bus = dbus.SessionBus()
         self._getPlayerList()
 
@@ -61,9 +212,14 @@ class DbusHandler:
                               dbus_interface='org.freedesktop.DBus.Properties')
 
 
-class LinuxWrapper(DbusHandler):
+class LinuxWrapper(DbusHandler, VolumeControls):
+    """Wrapper for Dbus and volume control."""
     def __init__(self):
-        super().__init__()
+        # Initiate DbusHandler and VolumeControls
+        # for base_class in self.__class__.__bases__:
+        #      base_class.__init__(self)
+        DbusHandler.__init__(self)
+        VolumeControls.__init__(self)
 
     def pause(self):
         player_names = []
@@ -156,17 +312,17 @@ class LinuxWrapper(DbusHandler):
                                 reply_handler=do_nothing,
                                 error_handler=do_nothing)
 
-    def mute(self):
-        os.system(CONTROLS[self.driver]["mute"])
-
-
-    def unmute(self):
-        os.system(CONTROLS[self.driver]["unmute"])
+    # def mute(self):
+    #     os.system(CONTROLS[self.driver]["mute"])
+    #
+    #
+    # def unmute(self):
+    #     os.system(CONTROLS[self.driver]["unmute"])
 
 
     def up(self):
-        os.system(CONTROLS[self.driver]["up"])
+        self.volume_change(self.change)
 
 
     def down(self):
-        os.system(CONTROLS[self.driver]["down"])
+        self.volume_change(-self.change)

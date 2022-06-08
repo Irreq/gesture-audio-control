@@ -11,7 +11,8 @@
 
 import argparse
 
-from pygac import GestureControl
+# from pygac import GestureControl
+import pygac
 
 def get_args():
     parser = argparse.ArgumentParser()
@@ -21,6 +22,7 @@ def get_args():
     parser.add_argument("--height", help='cap height', type=int, default=540)
 
     parser.add_argument('--use_static_image_mode', action='store_true')
+    parser.add_argument('--headless', action='store_true')
     parser.add_argument("--min_detection_confidence",
                         help='min_detection_confidence',
                         type=float,
@@ -29,6 +31,7 @@ def get_args():
                         help='min_tracking_confidence',
                         type=int,
                         default=0.5)
+    parser.add_argument("--driver", help="Sound card", type=str, default=None)
 
     args = parser.parse_args()
 
@@ -36,5 +39,7 @@ def get_args():
 
 if __name__ == "__main__":
     args = get_args()
-    gc = GestureControl(args)
+    # print(args.use_static_image_mode)
+    gc = pygac.GestureControl(args)
     gc.start()
+    print(pygac.__version__)

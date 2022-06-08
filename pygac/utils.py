@@ -6,7 +6,10 @@ import signal
 from collections import deque
 import cv2 as cv
 
-temporary_directory = None  # Will be changed on initialization
+temporary_directory = None  # Will be changed upon initialization
+
+def debug(text):
+    print(text)
 
 class CvFpsCalc(object):
     """Calculate Camera FPS"""

@@ -27,6 +27,14 @@ def get_args():
                         help='min_detection_confidence',
                         type=float,
                         default=0.7)
+    parser.add_argument("--delay",
+                        help='Min time before system changes volume.',
+                        type=float,
+                        default=0.4)
+    parser.add_argument("--threshold",
+                        help='Min relative distance before system register a change.',
+                        type=float,
+                        default=0.012)
     parser.add_argument("--min_tracking_confidence",
                         help='min_tracking_confidence',
                         type=int,

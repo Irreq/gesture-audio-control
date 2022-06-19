@@ -4,6 +4,8 @@ A gesture audio control program inspired by BMW's iDrive gesture recognition sys
 
 The program recognize the following gestures:
 
+* `Pinching (index finger and thumb)` Change the volume.
+
 * `Clockwise rotation (index finger)` Increase the volume.
 
 * `Counter-clockwise rotation (index finger)` Decrease the volume.
@@ -41,7 +43,6 @@ pip3 install requirements.txt
 
 
 ## Setup
-
 The program should work out-of-the-box.
 
 ## Usage
@@ -51,7 +52,7 @@ To *start* the program:
 python3 app.py
 ```
 
-The program can be used with a specific camera:
+The program can be used with a specific camera, eg. USB-Webcam:
 
 ```
 python3 app.py --device 2

@@ -45,17 +45,50 @@ def check_software(cmd):
 #
 # exit()
 
-class Alsa:
-    pass
+def output(cmd):
+    os.system(cmd)
 
-class PulseAudio:
-    pass
+class Cards:
 
-class PipeWire:
-    pass
+    class Alsa:
+        pass
 
-class Jack:
-    pass
+    class PulseAudio:
+        def set_volume(percentage):
+            cmd = f"pactl -- set-sink-volume 1 {percentage}%"
+            output(cmd)
+
+    class PipeWire:
+        pass
+
+    class Jack:
+        pass
+
+    def __init__(self, cards):
+        # Aggregate cards
+        self.cards = []
+        for id in cards:
+            card = getattr(self, id, None)
+            if card is not None:
+                self.card.append(card())
+
+
+
+    def get_cards(self):
+        pass
+
+    def handle(self, function, args):
+        for card in self.cards:
+            f = getattr(card, function, None)
+            if f is not None:
+                try:
+                    f(args)
+                except Exception as e:
+                    print(e)
+
+
+
+
 
 
 class VolumeControls:
@@ -69,6 +102,8 @@ class VolumeControls:
         self.driver = driver
         self.debug = utils.debug
         self.soundcards = self._aggregate_soundcards()
+
+        # self.test_soundcards = Cards("PulseAudio")
 
         if not self.soundcards:
             raise IOError("No soundcards could be detected, is `alsa` installed?")
@@ -168,8 +203,10 @@ class VolumeControls:
                     #                                                 value)
                     cmd = "amixer -c {0} set {1} -q {2}%".format(id, device,
                                                                  self.percentage)
-                    os.system(cmd)
+                    # os.system(cmd)
                     # self.debug(cmd)
+
+        self.set_volume()
 
     def mute(self):
         if not self.muted:
@@ -178,6 +215,12 @@ class VolumeControls:
     def unmute(self):
         if self.muted:
             self.muted = True
+
+    def set_volume(self):
+        cmd = f"pactl -- set-sink-volume 1 {self.percentage}%"
+        print(self.percentage, end="\r     ")
+        os.system(cmd)
+        # self.test_soundcards.handle("set_Volume", self.percentage)
 
 
 def do_nothing(*args, **kwargs):

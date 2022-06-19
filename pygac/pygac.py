@@ -3,6 +3,7 @@
 import os
 import csv
 import copy
+import time
 import signal
 import argparse
 import itertools
@@ -147,9 +148,17 @@ def pre_process_point_history(image, point_history):
 
 
 class GestureControl(GracefulExit, AudioWrapper):
+    """Documentation"""
 
     use_brect = True
     previous = ""
+
+    exit_now = False  # Gracefully halt the program on interupt <Ctrl-C>
+
+    # For FPS
+    start_tick = cv.getTickCount()
+    fps_freq = 1000.0 / cv.getTickFrequency()
+    difftimes = deque(maxlen=10)
 
     def __init__(self, args=None, callback=None, driver=None, **entries):
         self.__dict__.update(entries)
@@ -166,6 +175,9 @@ class GestureControl(GracefulExit, AudioWrapper):
         self.cap_width = args.width
         self.cap_height = args.height
 
+        self.delay = args.delay
+        self.threshold = args.threshold
+
         self.min_detection_confidence = args.min_detection_confidence
         self.min_tracking_confidence = args.min_tracking_confidence
 
@@ -173,16 +185,38 @@ class GestureControl(GracefulExit, AudioWrapper):
         for base_class in self.__class__.__bases__:
              base_class.__init__(self)
 
+        signal.signal(signal.SIGINT, self._exit_gracefully)
+        signal.signal(signal.SIGTERM, self._exit_gracefully)
+
+    def _exit_gracefully(self, *args, **kwargs):
+        self.exit_now = True
+
+    def get_fps(self, as_int=True):
+        """Calculate Camera FPS"""
+        current_tick = cv.getTickCount()
+        different_time = (current_tick - self.start_tick) * self.fps_freq
+        self.start_tick = current_tick
+
+        self.difftimes.append(different_time)
+
+        fps = 1000.0 / (sum(self.difftimes) / len(self.difftimes))
+        if as_int:
+            return int(fps)
+        else:
+            fps_rounded = round(fps, 2)
+
+            return fps_rounded
+
     def aggregate_vision(self):
         """Initialize CV object and aggregate devices"""
         self.cap = cv.VideoCapture(self.cap_device)
-        self.cap.set(cv.CAP_PROP_FRAME_WIDTH, self.cap_width)
-        self.cap.set(cv.CAP_PROP_FRAME_HEIGHT, self.cap_height)
+        # self.cap.set(cv.CAP_PROP_FRAME_WIDTH, self.cap_width)
+        # self.cap.set(cv.CAP_PROP_FRAME_HEIGHT, self.cap_height)
 
         self.mp_hands = mp.solutions.hands
         self.hands = self.mp_hands.Hands(
             static_image_mode=False,
-            max_num_hands=1,  # TODO: Multiple hand recognition
+            max_num_hands=2,
             min_detection_confidence=self.min_detection_confidence,
             min_tracking_confidence=self.min_tracking_confidence,
         )
@@ -239,8 +273,13 @@ class GestureControl(GracefulExit, AudioWrapper):
 
         self.aggregate_vision()
 
+        first_detected = False
+        detected = False
+        previous = 0
+
         while not self.exit_now:
-            fps = self.cvFpsCalc.get()
+
+            fps = self.get_fps()
 
             ret, image = self.cap.read()
             if not ret:
@@ -255,25 +294,38 @@ class GestureControl(GracefulExit, AudioWrapper):
             results = self.hands.process(image)
             image.flags.writeable = True
 
-            # res = results.multi_hand_world_landmarks
-
-            # if res is None:
-            #     res = 0
-            # # else:
-            # #     res = len(res)
-            # print(results, end = "\r")
-            # if results.multi_hand_world_landmarks:
-            #     for i, hand_landmarks in enumerate(results.multi_hand_world_landmarks):
-            #         # print(i, hand_landmarks)
-            #         print(i)
-            #
-            # continue
 
             if results.multi_hand_landmarks is not None:
-                for hand_landmarks, handedness in zip(results.multi_hand_landmarks,
+                if len(results.multi_handedness) < 2:
+                    two_hands = False
+                    detected = False
+                else:
+                    two_hands = True
+                for hand_landmarks, hand_world_landmarks, handedness in zip(results.multi_hand_landmarks, results.multi_hand_world_landmarks,
                                                       results.multi_handedness):
 
-                    brect = calc_bounding_rect(debug_image, hand_landmarks)
+                    if two_hands:
+                        if handedness.classification[0].label == "Right":
+                            points = []
+                            for i in [4, 8]:  # Distance between thumb and index
+                                landmark = hand_world_landmarks.landmark[i]
+                                point = np.array([landmark.x, landmark.y, landmark.z])
+                                points.append(point)
+
+                            squared_dist = np.sum((points[0]-points[1])**2, axis=0)
+                            dist = np.sqrt(squared_dist)
+                            dist /= 0.13
+                            dist = round(dist.tolist(), 2)
+                            if not detected:
+                                detected = time.time()
+
+                            else:
+                                if detected + self.delay < time.time():  # Allow for human to have time to adjust fingers
+                                    if dist < previous - self.threshold or previous + self.threshold < dist:
+                                        previous = dist
+                                        self.percentage = int(100 * (dist*(dist < 1.0) or 1.0))
+                                        self.set_volume()
+                        continue
 
                     landmark_list = calc_landmark_list(debug_image, hand_landmarks)
 
@@ -326,6 +378,8 @@ class GestureControl(GracefulExit, AudioWrapper):
                     self.handle_events(handstatus, fingerstatus)
 
             else:
+                if detected:
+                    detected = False
                 self.point_history.append([0, 0])
 
         self.cap.release()

@@ -152,6 +152,7 @@ class GestureControl(GracefulExit, AudioWrapper):
 
     use_brect = True
     previous = ""
+    mode = ""
 
     exit_now = False  # Gracefully halt the program on interupt <Ctrl-C>
 
@@ -182,7 +183,7 @@ class GestureControl(GracefulExit, AudioWrapper):
         self.min_tracking_confidence = args.min_tracking_confidence
 
         # Initiate GracefulExit and AudioWrapper
-        for base_class in self.__class__.__bases__:
+        for base_class in [self.__class__.__bases__[0]]:
              base_class.__init__(self)
 
         signal.signal(signal.SIGINT, self._exit_gracefully)
@@ -249,25 +250,38 @@ class GestureControl(GracefulExit, AudioWrapper):
         self.finger_gesture_history = deque(maxlen=self.history_length)
 
     def handle_events(self, handstatus, fingerstatus):
+        # mode = ""
         if handstatus == "Pointer":  # TODO limit FPS
             if fingerstatus == "Counter Clockwise":
-                self.down()
+                self.mode = fingerstatus
+                # self.down()
+                if self.percentage > 0:
+                    self.percentage -= 1
             elif fingerstatus == "Clockwise":
-                self.up()
+                self.mode = fingerstatus
+                # self.up()
+                if self.percentage < 100:
+                    self.percentage += 1
 
         if handstatus != self.previous:
             if handstatus == "Pointer":
-                self.play()
+                # self.play()
+                pass
             elif handstatus == "Open":
-                self.play()
+                self.mode = handstatus
+                # self.play()
             elif handstatus == "Close":
-                self.pause()
+                self.mode = handstatus
+                # self.pause()
 
             self.previous = handstatus
 
         if self.verbose:
             print(self.percentage, end="\r     ")
 
+
+        # print(self.mode, "            ", end="\r")
+        print(self.percentage*"=", end="                                \r   ")
     def start(self):
         """Main Loop"""
 
@@ -280,6 +294,10 @@ class GestureControl(GracefulExit, AudioWrapper):
         while not self.exit_now:
 
             fps = self.get_fps()
+            # print(fps)
+            # # time.sleep(1/)
+            # if fps > 16:
+            #     time.sleep(1/16/(fps-16))
 
             ret, image = self.cap.read()
             if not ret:
@@ -324,7 +342,12 @@ class GestureControl(GracefulExit, AudioWrapper):
                                     if dist < previous - self.threshold or previous + self.threshold < dist:
                                         previous = dist
                                         self.percentage = int(100 * (dist*(dist < 1.0) or 1.0))
-                                        self.set_volume()
+                                        # self.set_volume()
+                                        # print(self.percentage, end="    \r   ")
+                                        print(self.percentage*"=", end="                                                            \r   ")
+                                        cmd = f"pactl set-sink-volume @DEFAULT_SINK@ {self.percentage}%"
+                                        # cmd = f"pactl -- set-sink-volume 1 {self.percentage}%"
+                                        os.system(cmd)
                         continue
 
                     landmark_list = calc_landmark_list(debug_image, hand_landmarks)
